@@ -8,7 +8,7 @@ use std::{
 use anyhow::Context;
 use rayon::prelude::*;
 
-use crate::{exiftool, hash::Hash};
+use crate::exiftool;
 
 // TODO Keep clap/CLI-specific stuff out of lib code.
 #[derive(clap::Subcommand, Debug)]
@@ -38,16 +38,10 @@ struct File {
 }
 
 impl File {
-    fn new(
-        root: &Path,
-        src: &Path,
-        ts: Timestamp,
-        hash: Hash,
-        digest: &str,
-    ) -> Self {
+    fn new(root: &Path, src: &Path, ts: Timestamp) -> Self {
         Self {
             src: src.to_path_buf(),
-            dst: dst(root, src, ts, hash.name(), digest),
+            dst: dst(root, src, ts),
         }
     }
 
@@ -157,7 +151,6 @@ pub fn organize<'a>(
     force: bool,
     use_exiftool: bool,
     show_progress: bool,
-    hash: Hash,
 ) -> anyhow::Result<()> {
     tracing::info!(?op, ?src_root, ?dst_root, "Starting");
     let src_root = src_root.canonicalize().context(format!(
@@ -210,13 +203,8 @@ pub fn organize<'a>(
                 .flatten()
                 .map(|timestamp| (path, typ, timestamp))
         })
-        .filter_map(move |(path, typ, timestamp)| {
-            hash.digest(&path)
-                .ok()
-                .map(|digest| (path, typ, timestamp, digest))
-        })
-        .map(move |(path, _, timestamp, digest)| {
-            File::new(&src_root, &path, timestamp, hash, &digest)
+        .map(move |(path, _, timestamp)| {
+            File::new(&src_root, &path, timestamp)
         })
         .for_each(|file| {
             let result = match op {
@@ -264,32 +252,20 @@ fn date_time_exif_to_chrono(
     Some(chrono::NaiveDateTime::new(date, time))
 }
 
-fn dst(
-    root: &Path,
-    src: &Path,
-    ts: Timestamp,
-    hash_name: &str,
-    digest: &str,
-) -> PathBuf {
-    use chrono::{Datelike, Timelike}; // Access timestamp fields.
+fn dst(root: &Path, src: &Path, ts: Timestamp) -> PathBuf {
+    use chrono::Datelike; // Access timestamp fields.
 
     let year = format!("{:02}", ts.year());
-    let month = format!("{:02}", ts.month());
-    let day = format!("{:02}", ts.day());
-    let hour = format!("{:02}", ts.hour());
-    let minute = format!("{:02}", ts.minute());
-    let second = format!("{:02}", ts.second());
 
-    let stem = [
-        [year.as_str(), month.as_str(), day.as_str()].join("-"),
-        [hour, minute, second].join(":"),
-        [hash_name, digest].join(":"),
-    ]
-    .join("--");
-
+    let filename = src
+        .file_name()
+        .unwrap_or_default()
+        .to_str()
+        .unwrap_or_default()
+        .to_string();
     let extension = src.extension().unwrap_or_default().to_ascii_lowercase();
-    let name = PathBuf::from(stem).with_extension(extension);
-    let mut dir: PathBuf = [&year, &month, &day].iter().collect();
+    let name = PathBuf::from(filename).with_extension(extension);
+    let mut dir: PathBuf = [&year].iter().collect();
     if let Some(aux) = auxiliary_subpath(root, src) {
         dir.push(aux);
     }

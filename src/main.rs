@@ -9,10 +9,6 @@ struct Cli {
     #[clap(short, long = "log", default_value_t = tracing::Level::WARN)]
     log_level: tracing::Level,
 
-    /// Hash.
-    #[clap(long, value_enum, default_value_t = phorg::hash::Hash::default())]
-    hash: phorg::hash::Hash,
-
     /// Overwrite existing files.
     #[clap(short = 'f', long = "force", default_value_t = false)]
     force: bool,
@@ -54,7 +50,6 @@ fn main() -> anyhow::Result<()> {
         cli.force,
         use_exiftool,
         cli.show_progress,
-        cli.hash,
     )?;
     Ok(())
 }
