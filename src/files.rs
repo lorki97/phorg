@@ -323,6 +323,7 @@ pub struct FilePaths {
 }
 
 impl FilePaths {
+    #[must_use]
     pub fn find(root: &Path) -> Self {
         let mut frontier = VecDeque::new();
         frontier.push_back(root.to_path_buf());
