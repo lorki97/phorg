@@ -41,25 +41,13 @@ impl File {
     fn new(
         root: &Path,
         src: &Path,
-        typ: Typ,
-        img_dir: &str,
-        vid_dir: &str,
         ts: Timestamp,
         hash: Hash,
         digest: &str,
     ) -> Self {
         Self {
             src: src.to_path_buf(),
-            dst: dst(
-                root,
-                src,
-                typ,
-                img_dir,
-                vid_dir,
-                ts,
-                hash.name(),
-                digest,
-            ),
+            dst: dst(root, src, ts, hash.name(), digest),
         }
     }
 
@@ -113,20 +101,10 @@ impl File {
     }
 }
 
-fn auxiliary_subpath(
-    root: &Path,
-    path: &Path,
-    ty: Typ,
-    img_dir: &str,
-    vid_dir: &str,
-) -> Option<PathBuf> {
+fn auxiliary_subpath(root: &Path, path: &Path) -> Option<PathBuf> {
     use std::path::Component;
 
     let parent = path.parent()?;
-    let root = match ty {
-        Typ::Img => root.join(img_dir),
-        Typ::Vid => root.join(vid_dir),
-    };
     let mid_components: Vec<Component> =
         parent.strip_prefix(root).ok()?.components().collect();
     match &mid_components[..] {
@@ -175,8 +153,6 @@ pub fn organize<'a>(
     src_root: &'a Path,
     dst_root: &'a Path,
     op: &Op,
-    img_dir: &'a str,
-    vid_dir: &'a str,
     ty_filter: Option<Typ>,
     force: bool,
     use_exiftool: bool,
@@ -239,11 +215,8 @@ pub fn organize<'a>(
                 .ok()
                 .map(|digest| (path, typ, timestamp, digest))
         })
-        .map(move |(path, typ, timestamp, digest)| {
-            File::new(
-                &src_root, &path, typ, img_dir, vid_dir, timestamp, hash,
-                &digest,
-            )
+        .map(move |(path, _, timestamp, digest)| {
+            File::new(&src_root, &path, timestamp, hash, &digest)
         })
         .for_each(|file| {
             let result = match op {
@@ -294,9 +267,6 @@ fn date_time_exif_to_chrono(
 fn dst(
     root: &Path,
     src: &Path,
-    typ: Typ,
-    img_dir: &str,
-    vid_dir: &str,
     ts: Timestamp,
     hash_name: &str,
     digest: &str,
@@ -319,12 +289,8 @@ fn dst(
 
     let extension = src.extension().unwrap_or_default().to_ascii_lowercase();
     let name = PathBuf::from(stem).with_extension(extension);
-    let typ_dir = match typ {
-        Typ::Img => img_dir,
-        Typ::Vid => vid_dir,
-    };
-    let mut dir: PathBuf = [typ_dir, &year, &month, &day].iter().collect();
-    if let Some(aux) = auxiliary_subpath(root, src, typ, img_dir, vid_dir) {
+    let mut dir: PathBuf = [&year, &month, &day].iter().collect();
+    if let Some(aux) = auxiliary_subpath(root, src) {
         dir.push(aux);
     }
     dir.join(name)
@@ -447,53 +413,49 @@ mod tests {
     #[test]
     fn t_auxiliary_subpath() {
         let root = PathBuf::from("/a/b/c");
-        let ty = Typ::Img;
-        let img_dir = "img";
-        let vid_dir = "vid";
 
         // Single level aux subdir:
-        let path = PathBuf::from("/a/b/c/img/2009/01/07/foo/file.jpg");
-        let aux = auxiliary_subpath(&root, &path, ty, img_dir, vid_dir);
+        let path = PathBuf::from("/a/b/c/2009/01/07/foo/file.jpg");
+        let aux = auxiliary_subpath(&root, &path);
         assert_eq!(Some(PathBuf::from("foo")), aux);
 
         // Multi level aux subdir:
-        let path =
-            PathBuf::from("/a/b/c/img/2009/01/07/foo/bar/baz/file.jpg");
-        let aux = auxiliary_subpath(&root, &path, ty, img_dir, vid_dir);
+        let path = PathBuf::from("/a/b/c/2009/01/07/foo/bar/baz/file.jpg");
+        let aux = auxiliary_subpath(&root, &path);
         assert_eq!(Some(PathBuf::from("foo/bar/baz")), aux);
 
         // No aux subdir:
-        let path = PathBuf::from("/a/b/c/img/2009/01/07/file.jpg");
-        let aux = auxiliary_subpath(&root, &path, ty, img_dir, vid_dir);
+        let path = PathBuf::from("/a/b/c/2009/01/07/file.jpg");
+        let aux = auxiliary_subpath(&root, &path);
         assert_eq!(None, aux);
 
         // Not proper date path:
-        let path = PathBuf::from("/a/b/c/img/2009/01/foo/file.jpg");
-        let aux = auxiliary_subpath(&root, &path, ty, img_dir, vid_dir);
+        let path = PathBuf::from("/a/b/c/2009/01/foo/file.jpg");
+        let aux = auxiliary_subpath(&root, &path);
         assert_eq!(None, aux);
 
         // Relative path:
         let root = PathBuf::from("/a/b/c");
-        let path = PathBuf::from("a/b/c/img/2009/01/07/foo/file.jpg");
-        let aux = auxiliary_subpath(&root, &path, ty, img_dir, vid_dir);
+        let path = PathBuf::from("a/b/c/2009/01/07/foo/file.jpg");
+        let aux = auxiliary_subpath(&root, &path);
         assert_eq!(None, aux);
 
         // Relative root:
         let root = PathBuf::from("a/b/c");
-        let path = PathBuf::from("a/b/c/img/2009/01/07/foo/file.jpg");
-        let aux = auxiliary_subpath(&root, &path, ty, img_dir, vid_dir);
+        let path = PathBuf::from("a/b/c/2009/01/07/foo/file.jpg");
+        let aux = auxiliary_subpath(&root, &path);
         assert_eq!(Some(PathBuf::from("foo")), aux);
 
         // Root mismatch:
         let root = PathBuf::from("a/b/c");
-        let path = PathBuf::from("/a/b/c/img/2009/01/07/foo/file.jpg");
-        let aux = auxiliary_subpath(&root, &path, ty, img_dir, vid_dir);
+        let path = PathBuf::from("/a/b/c/2009/01/07/foo/file.jpg");
+        let aux = auxiliary_subpath(&root, &path);
         assert_eq!(None, aux);
 
         // Root mismatch:
         let root = PathBuf::from("/meh");
-        let path = PathBuf::from("/a/b/c/img/2009/01/07/foo/file.jpg");
-        let aux = auxiliary_subpath(&root, &path, ty, img_dir, vid_dir);
+        let path = PathBuf::from("/a/b/c/2009/01/07/foo/file.jpg");
+        let aux = auxiliary_subpath(&root, &path);
         assert_eq!(None, aux);
     }
 }

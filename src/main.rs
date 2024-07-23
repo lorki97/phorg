@@ -31,14 +31,6 @@ struct Cli {
     #[clap(short, long = "type", name = "TYPE", value_enum)]
     typ: Option<phorg::files::Typ>,
 
-    /// Image subdirectory under DST_ROOT.
-    #[clap(long, default_value = "img")]
-    img_dir: String,
-
-    /// Video subdirectory under DST_ROOT.
-    #[clap(long, default_value = "vid")]
-    vid_dir: String,
-
     /// Where to look for photo/video files.
     src_root: PathBuf,
 
@@ -58,8 +50,6 @@ fn main() -> anyhow::Result<()> {
         &cli.src_root,
         &cli.dst_root,
         &cli.op,
-        &cli.img_dir,
-        &cli.vid_dir,
         cli.typ,
         cli.force,
         use_exiftool,
